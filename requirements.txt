@@ -1,3 +1,4 @@
 pandas
 numpy
 scipy.stats
+matplotlib.pyplot
