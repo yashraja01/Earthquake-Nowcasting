@@ -2,20 +2,21 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import linregress
+from openpyxl import load_workbook
 
-# Loading excel
+# Load Excel
 file_path = "/content/Taiwan DataSheet(2).xlsx"
-df = pd.read_excel(file_path, usecols=["Date", "Time", "Latitude", "Longitude", "Depth", "Mw"], engine='openpyxl')
+df = pd.read_excel(file_path, usecols=["Date", "Time", "Latitude", "Longitude", "Depth", "Mw"], engine="openpyxl")
 
 # Keep valid magnitudes
 df = df.dropna(subset=["Mw"]).copy()
 df["Mw"] = pd.to_numeric(df["Mw"], errors="coerce")
 df = df.dropna(subset=["Mw"])
 
-# Round Mw to nearest 0.1 (for binning)
+# Round Mw to nearest 0.1
 df["Mw_round"] = df["Mw"].round(1)
 
-# Defining magnitude bins (from 4.0 up to maximum magnitude, step 0.1)
+# Magnitude bins
 m_min = 4.0
 m_max = float(np.floor(df["Mw_round"].max() * 10) / 10.0)
 mag_grid = np.round(np.arange(m_min, m_max + 0.001, 0.1), 1)
@@ -36,22 +37,19 @@ result = pd.DataFrame({
 
 # Drop NaNs for regression
 fit_data = result.dropna(subset=["log10(N)"])
-
-#Linear regression
 slope, intercept, r_value, p_value, std_err = linregress(fit_data["Magnitude"], fit_data["log10(N)"])
 a_value = intercept
-b_value = -slope  # slope is negative, so b = -slope
+b_value = -slope
 
 print(f" fit: log10(N) = {a_value:.3f} - {b_value:.3f} * M")
 print(f"R-squared = {r_value**2:.4f}")
 
+# Plot
 plt.figure(figsize=(8, 6))
 plt.scatter(result["Magnitude"], result["log10(N)"], s=40, alpha=0.7, label="Observed data")
-
 x_vals = np.linspace(result["Magnitude"].min(), result["Magnitude"].max(), 100)
 y_vals = intercept + slope * x_vals
 plt.plot(x_vals, y_vals, color="red", linewidth=2, label=f"Fit: log10(N) = {a_value:.2f} - {b_value:.2f}M")
-
 plt.xlabel("Magnitude (Mw)")
 plt.ylabel("log10(N)")
 plt.title("Frequency-Magnitude Distribution")
@@ -59,12 +57,19 @@ plt.grid(True)
 plt.legend()
 plt.show()
 
-# Save result to CSV
-result.to_excel("/content/Taiwan DataSheet(2).xlsx", index=False)
+# Load workbook to find sheet
+book = load_workbook(file_path)
+sheet_name = book.active.title   # use active sheet (or specify manually)
 
+# Write result DataFrame starting from column N
+with pd.ExcelWriter(file_path, engine="openpyxl", mode="a", if_sheet_exists="overlay") as writer:
+    result.to_excel(
+        writer,
+        sheet_name=sheet_name,
+        index=False,
+        startcol=6  # column N (0-based index)
+    )
 
-# Load the original Excel file again to add new columns
-file_path = "/content/Taiwan DataSheet(2).xlsx"   # change path if needed
 df = pd.read_excel(file_path, engine='openpyxl')
 
 # 1) Small? column: 1 if Mw < 6, else 0
@@ -87,8 +92,16 @@ for small, large in zip(df["Small?"], df["Large?"]):
 
 df["CumulativeSmall"] = cumulative_counts
 
-# Save back to Excel
-output_path = "/content/Taiwan DataSheet(2).xlsx"
-df.to_excel(output_path, index=False)
+df.to_excel(file_path, index=False)
 
-print(f"Updated file saved as: {output_path}")
+# Make sure the column name matches exactly
+values = df["CumulativeSmall"].tolist()
+
+df["Cycle_peak"] = np.nan
+
+for i in range(1, len(values)):
+    # Detect reset (when value goes to 0 or 1 after being higher)
+    if values[i] in (0, 1) and values[i-1] > values[i]:
+        df.loc[i-1, "Cycle_peak"] = values[i-1]  # mark the peak row
+
+df.to_excel(file_path, index=False)
