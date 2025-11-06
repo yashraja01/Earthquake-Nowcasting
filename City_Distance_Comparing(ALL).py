@@ -26,10 +26,11 @@ if not required_columns.issubset(df.columns):
 #Looping through cities and updating dataframes
 for city, (city_lat, city_lon) in cities.items():
     #Calculate distance
+for R in (100,150,200):
     distance_km = np.sqrt((df['Latitude'] - city_lat)**2 + (df['Longitude'] - city_lon)**2) * 101.5
 
-    #Check if distance is within 150 km, returns true or false
-    within_radius = distance_km <= 150
+    #Check if distance is within R km, returns true or false
+    within_radius = distance_km <= R
 
     # Creating new columns
     city_distance_col = f'{city} (km)'
